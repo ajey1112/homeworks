@@ -13,51 +13,42 @@ CLUSTER=$3
 echo "Setting up Jenkins in project ${GUID}-jenkins from Git Repo ${REPO} for Cluster ${CLUSTER}"
 
 # Set up Jenkins with sufficient resources
-# TBD
-oc new-project ${GUID}-jenkins --display-name "${GUID} Shared Jenkins"
 oc new-app jenkins-persistent --param ENABLE_OAUTH=true --param MEMORY_LIMIT=2Gi --param VOLUME_CAPACITY=4Gi --param DISABLE_ADMINISTRATIVE_MONITORS=true
 oc set resources dc jenkins --limits=memory=2Gi,cpu=2 --requests=memory=1Gi,cpu=500m
 
 # Create custom agent container image with skopeo
-# TBD
-oc new-build -D $'FROM docker.io/openshift/jenkins-agent-maven-35-centos7:v3.11 USER root\nRUN yum -y install skopeo && yum clean all USER 1001' --name=jenkins-agent-appdev -n ${GUID}-jenkins
+oc new-build -D $'FROM docker.io/openshift/jenkins-agent-maven-35-centos7:v3.11\n
+      USER root\nRUN yum -y install skopeo && yum clean all\n
+      USER 1001' --name=jenkins-agent-appdev -n ${GUID}-jenkins
 
 # Create pipeline build config pointing to the ${REPO} with contextDir `openshift-tasks`
-# TBD
-echo "
-apiVersion: v1
+echo "apiVersion: v1
 items:
 - kind: "BuildConfig"
   apiVersion: "v1"
   metadata:
-    name: "pipeline-demo"
+    name: "tasks-pipeline"
   spec:
-    triggers:
-          - github:
-              secret: 5Mlic4Le
-            type: GitHub
-          - generic:
-              secret: FiArdDBH
-            type: Generic
+    source:
+      type: "Git"
+      git:
+        uri: "https://github.com/babs232/openshift-homework.git"
+      contextDir: "contextDir"
     strategy:
       type: "JenkinsPipeline"
       jenkinsPipelineStrategy:
-        jenkinsfile: |
-                          node {
-                              stage ("Build")
-                                    echo '*** Build Starting ***'
-                                    openshiftBuild bldCfg: 'cotd2', buildName: '', checkForTriggeredDeployments: 'false', commitID: '', namespace: '', showBuildLogs: 'true', verbose: 'true'
-                                    openshiftVerifyBuild bldCfg: 'cotd2', checkForTriggeredDeployments: 'false', namespace: '', verbose: 'false'
-                                    echo '*** Build Complete ***'
-                              stage ("Deploy and Verify in Development Env")
-                                    echo '*** Deployment Starting ***'
-                                    openshiftDeploy depCfg: 'cotd2', namespace: '', verbose: 'false', waitTime: ''
-                                    openshiftVerifyDeployment authToken: '', depCfg: 'cotd2', namespace: '', replicaCount: '1', verbose: 'false', verifyReplicaCount: 'false', waitTime: ''
-                                    echo '*** Deployment Complete ***'
-                               }
+        jenkinsfilePath: Jenkinsfile
+        env:
+          - name: "prefix"
+            value: "gpte-hw"
+          - name: "clusterDomain"
+            value: "apps.na311.openshift.opentlc.com"
+          - name: "devProject"
+            value: "b6a7-tasks-dev"
+          - name: "prodProject"
+            value: "b6a7-tasks-prod"
 kind: List
-metadata: {}" | oc create -f - -n ${GUID}-jenkins
-
+metadata: []" | oc create -f - -n ${GUID}-jenkins
 
 # Make sure that Jenkins is fully up and running before proceeding!
 while : ; do
